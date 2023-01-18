@@ -39,10 +39,10 @@
 #define SCREEN_WIDTH 128 // LCD display width, in pixels
 #define SCREEN_HEIGHT 64 // LCD display height, in pixels
 
-#define RST_PIN 4 // Configurable, see typical pin layout above
-#define SDA_0 5   // Configurable, see typical pin layout above
-#define SDA_1 17  // Configurable, see typical pin layout above
-#define SDA_2 16  // Configurable, see typical pin layout above
+#define RST_PIN 4 
+#define SDA_0 5   
+#define SDA_1 17  
+#define SDA_2 16  
 
 #define Trig_0 27
 #define Echo_0 26
@@ -60,25 +60,24 @@
 
 #define FEE_PER_PERCENT 100 // 100% pin = 10k => 1% = 100 VND
 
-// Creat Variables
+// Creat Variables firebase
 FirebaseData firebaseData;
 FirebaseJson json;
 // config wifi
 const char *ssid = "Nha 185";
 const char *password = "12341234";
-
 // set the LCD number of columns and rows
 int lcdColumns = 16;
 int lcdRows = 2;
 LiquidCrystal_I2C lcd(0x27, lcdColumns, lcdRows);
 
 static TimerHandle_t auto_reload_timer = NULL;
-
+// create MFRC522
 MFRC522 mfrc522[NUM_CELL_PIN_IN_ATM];
 int ssMFRC522[NUM_CELL_PIN_IN_ATM] = {SDA_0, SDA_1, SDA_2};
 MFRC522::MIFARE_Key key;
 MFRC522::StatusCode status;
-// block luu gia tri dien ap cua Pin
+// block so 4 luu gia tri dien ap cua Pin
 byte blockAddr = 4;
 // buffer luu gia tri dien ap
 byte bufVoltage[18];
@@ -92,6 +91,7 @@ static SemaphoreHandle_t sem_Handle_ReadCapacity;    // binary
 static SemaphoreHandle_t sem_Handle_FindCellPinFull; // binary
 static SemaphoreHandle_t sem_Handle_ReturnPin;       // binary
 
+// event group
 #define BIT_EVENT_READ_CAPACITY (1 << 0)
 #define BIT_EVENT_READ_USER (1 << 1)
 #define BIT_EVENT_CHECK_PIN_FULL (1 << 2)
@@ -99,13 +99,14 @@ EventGroupHandle_t xEventGroupPayMoney; // event dong bo su kien thanh toan
 
 static QueueHandle_t xQueueListPinFull; // queue chua danh sach vi tri cac pin da day trong ATM
 
-const char *filename = "/StatusPinInATM.json"; // file data cell pin in ATM (save flash)
+const char *filename = "/StatusPinInATM.json"; // file data status cell pin in ATM (save flash)
 String listIDCellPin[NUM_CELL_PIN_IN_ATM];     // danh sach id cac cell pin
 String listStatusCellPin[NUM_CELL_PIN_IN_ATM]; // trang thai cell pin (Empty, Full, Charging, New)
 
-bool thereIsUser = false;
+bool thereIsUser = false; // co user dang doi pin hay khong
 bool returnSlotPinFullToFrontQueue = false;
 
+// servo
 Servo servo[NUM_CELL_PIN_IN_ATM];
 
 // class User
@@ -119,6 +120,7 @@ public:
   User() {}
 };
 User user;
+
 // class new Pin
 class NewPin
 {
@@ -130,6 +132,7 @@ public:
   NewPin() {}
 };
 NewPin newPin;
+
 // class full Pin
 class FullPin
 {
@@ -140,7 +143,7 @@ public:
 };
 FullPin fullPin;
 
-///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////
 // write vi tri cell pin moi dua vao
 void writeStatusCellToFile(const char *filename, int slot, String IDPin, String status)
 {
@@ -231,7 +234,7 @@ float mapC(float x, float in_min, float in_max, float out_min, float out_max)
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
-// tinh dung luong pin dua vao voltage
+// tinh dung luong pin thong qua voltage
 int calCapacity(float voltage)
 {
   int capacity = 0;
@@ -292,8 +295,6 @@ String convertByteToHex(byte *buffer, byte bufferSize)
   String hex = "";
   for (byte i = 0; i < bufferSize; i++)
   {
-    // Serial.print(buffer[i] < 0x10 ? " 0" : " ");
-    // Serial.print(buffer[i], HEX);
     if (buffer[i] < 0x10)
     {
       hex += '0';
@@ -303,7 +304,7 @@ String convertByteToHex(byte *buffer, byte bufferSize)
   return hex;
 }
 
-///////////////////////////////////////////////////////////////////////
+// tinh khoang cach HR-SC04
 float distanceSonarSensor(int trigPin, int echoPin)
 {
   digitalWrite(trigPin, LOW);
@@ -319,6 +320,7 @@ float distanceSonarSensor(int trigPin, int echoPin)
     return distanceCm;
 }
 
+// tinh phi theo dung luong pin
 int calFee(int capacity)
 {
   return (int)((100 - capacity) * 100);
@@ -335,6 +337,10 @@ void unlockCel(int slot)
 {
   servo[slot].write(0);
 }
+/////////////////////////////////////////////////////////////////////////////
+
+
+
 
 ///////////////////////// Task function /////////////////////////////////////
 /**
@@ -392,14 +398,8 @@ void taskCheckPin(void *arg)
             newPin.slot = i;
             // Khoa o chua pin
             lockCel(i);
-            // give 3 semaphore
-
+            // give sem_Handle_ReadCapacity
             xSemaphoreGive(sem_Handle_ReadCapacity);
-            // vTaskDelay(500 / portTICK_PERIOD_MS);
-
-            // xSemaphoreGive(sem_Handle_FindUser);
-
-            // xSemaphoreGive(sem_Handle_FindCellPinFull);
             thereIsUser = true;
           }
           else
@@ -483,6 +483,7 @@ void taskReadCapacity(void *arg)
       lcd.print("Valid capacity");
       Serial.println("Valid capacity");
 
+      // give sem_Handle_FindUser, sem_Handle_FindCellPinFull
       xSemaphoreGive(sem_Handle_FindUser);
       xSemaphoreGive(sem_Handle_FindCellPinFull);
       delay(1000);
@@ -611,7 +612,7 @@ void taskReturnPin(void *arg)
 }
 
 /**
- * Doc User tu firebase dua vao id Pin
+ * Doc User tu firebase theo id Pin
  */
 void taskReadUser(void *arg)
 {
@@ -770,7 +771,7 @@ void setup()
   Serial.println("Save data cell pin to flash");
   writeDataToFile(filename);
   delay(500);
-  //  doc tu flash vi tri o trong
+  //  doc tu flash vi tri cell trong
   readDataFromFile(filename);
   delay(500);
   xQueueListPinFull = xQueueCreate(NUM_CELL_PIN_IN_ATM, sizeof(int));
